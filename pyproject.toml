@@ -1,0 +1,21 @@
+[project]
+name = "rate-limit-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "patonw", email = "4967614-patonw@users.noreply.gitlab.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.14.5",
+    "pyrate-limiter>=4.0.2",
+    "redis>=7.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+rate-limit-mcp = "rate_limit_mcp.main:main"
