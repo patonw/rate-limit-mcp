@@ -79,25 +79,50 @@ def init_buckets():
             LIMITERS[bucket_name] = Limiter(bucket)
 
 
-@mcp.tool
-def acquire_permit(
+def init_tools():
+    for key in LIMITERS.keys():
+
+        def inner(
+            blocking: Annotated[
+                bool, "Wait until permits available before returning"
+            ] = True,
+            item: Annotated[str, "Name of the item to store in the bucket"] = "",
+        ) -> bool:
+            return LIMITERS[key].try_acquire(item, blocking=blocking)
+
+        mcp.tool(
+            inner,
+            name=f"limit-{key}",
+            description=f"""Acquire a permit for the bucket {key}""",
+        )
+
+
+@mcp.tool(name="rate-limit")
+def rate_limit(
     bucket: Annotated[str, "Name of a bucket defined in server configuration"],
     blocking: Annotated[bool, "Wait until permits available before returning"] = True,
     item: Annotated[str, "Name of the item to store in the bucket"] = "",
 ) -> bool:
+    """Wait until a permit for `bucket` is available"""
     return LIMITERS[bucket].try_acquire(item, blocking=blocking)
 
 
 def main():
     init_buckets()
+    init_tools()
+
     mcp.run()
 
 
 if __name__ == "__main__":
+    import asyncio
     from pprint import pp
 
     init_buckets()
+    init_tools()
+    tools = asyncio.run(mcp.get_tools())
+    pp(tools)
 
-    for i in range(10):
-        LIMITERS["foobar"].try_acquire("hello")
-        pp("Acquired permit")
+    # for i in range(10):
+    #     LIMITERS["foobar"].try_acquire("hello")
+    #     pp("Acquired permit")
