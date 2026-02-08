@@ -32,6 +32,7 @@ REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
 redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
 mcp = FastMCP("rerank-mcp", instructions=__doc__)
 
+RATES = dict()
 BUCKETS = dict()
 LIMITERS = dict()
 
@@ -76,10 +77,23 @@ def init_buckets():
                         rates.append(Rate(int(reqs), count * Duration.WEEK))
 
             bucket = RedisBucket.init(rates, redis_conn, bucket_name)
+            RATES[bucket_name] = rates
+            BUCKETS[bucket_name] = bucket
             LIMITERS[bucket_name] = Limiter(bucket)
 
 
 def init_tools():
+    def closure(key):
+        def inner(
+            blocking: Annotated[
+                bool, "Wait until permits available before returning"
+            ] = True,
+            item: Annotated[str, "Name of the item to store in the bucket"] = "",
+        ) -> bool:
+            return LIMITERS[key].try_acquire(item, blocking=blocking)
+
+        return inner
+
     for key in LIMITERS.keys():
 
         def inner(
@@ -90,8 +104,12 @@ def init_tools():
         ) -> bool:
             return LIMITERS[key].try_acquire(item, blocking=blocking)
 
+        from pprint import pp
+
+        pp(RATES[key])
+
         mcp.tool(
-            inner,
+            closure(key),
             name=f"limit-{key}",
             description=f"""Acquire a permit for the bucket {key}""",
         )
@@ -122,7 +140,3 @@ if __name__ == "__main__":
     init_tools()
     tools = asyncio.run(mcp.get_tools())
     pp(tools)
-
-    # for i in range(10):
-    #     LIMITERS["foobar"].try_acquire("hello")
-    #     pp("Acquired permit")
