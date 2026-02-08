@@ -5,14 +5,14 @@ Buckets must be declared by environment variable prior to starting the server.
 Bucket names are derived from the variable name by stripping out the prefix (default: BUCKET_).
 e.g. variable `BUCKET_llm-openrouter` defines the bucket `llm-openrouter`.
 
-The value contains a ':' separated list of rates.
+The value contains a comma separated list of rates.
 Each rate uses the format "{requests: int}/{time: int}{time_unit: s|m|h|d|w}",
 where the time units correspond to seconds, minutes, hours, days and weeks, respectively.
 Rates must be ordered according to https://pyratelimiter.readthedocs.io/en/latest/#defining-rate-limits-and-buckets.
 
 Example:
-    BUCKET_foo=2/5s:15/m:100/4h
-    BUCKET_bar=1/s:100/10m:1000/d
+    BUCKET_foo=2/5s,15/m,100/4h
+    BUCKET_bar=1/s,100/10m,1000/d
 
 Bucket "foo" has limits of 2 every 5 seconds, 15 per minute and 100 every 4 hours.
 Bucket "bar" has limits of 1 per second, 100 every 10 minutes and 1000 per day.
@@ -32,6 +32,7 @@ REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
 redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
 mcp = FastMCP("rerank-mcp", instructions=__doc__)
 
+RATES = dict()
 BUCKETS = dict()
 LIMITERS = dict()
 
@@ -80,8 +81,7 @@ def init_buckets():
 
 
 def init_tools():
-    for key in LIMITERS.keys():
-
+    def closure(key):
         def inner(
             blocking: Annotated[
                 bool, "Wait until permits available before returning"
@@ -90,8 +90,11 @@ def init_tools():
         ) -> bool:
             return LIMITERS[key].try_acquire(item, blocking=blocking)
 
+        return inner
+
+    for key in LIMITERS.keys():
         mcp.tool(
-            inner,
+            closure(key),
             name=f"limit-{key}",
             description=f"""Acquire a permit for the bucket {key}""",
         )
@@ -122,7 +125,3 @@ if __name__ == "__main__":
     init_tools()
     tools = asyncio.run(mcp.get_tools())
     pp(tools)
-
-    # for i in range(10):
-    #     LIMITERS["foobar"].try_acquire("hello")
-    #     pp("Acquired permit")
